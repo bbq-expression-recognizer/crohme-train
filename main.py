@@ -30,7 +30,13 @@ def transform_input(image, height, width):
     non_white_row_indices = np.where(np.any(image < 128, axis=1))[0]
     if non_white_row_indices.size == 0:
         return None
-    image = image[np.min(non_white_row_indices):(np.max(non_white_row_indices)+1)]
+    image = image[np.min(non_white_row_indices):(np.max(non_white_row_indices)+1), :]
+
+    # crop white column padding from image
+    non_white_col_indices = np.where(np.any(image < 128, axis=0))[0]
+    if non_white_col_indices.size == 0:
+        return None
+    image = image[:, np.min(non_white_col_indices):(np.max(non_white_col_indices)+1)]
 
     resized = Image.fromarray(image,mode='L')
     resized.thumbnail((img_x-2*margin, img_y-2*margin),Image.ANTIALIAS)
@@ -89,8 +95,17 @@ height, width = binary_array.shape
 gap_ratio = 10
 
 
-x_gap = max(height / gap_ratio, 1)
-x_positions = get_positions(x_gap, width)
+empty_positions = np.all(binary_array == 255, axis = 0)
+
+x_positions = [0]
+for x in xrange(1, width):
+    if (empty_positions[x]) and (not empty_positions[x-1]):
+        x_positions.append(x)
+        continue
+    if (not empty_positions[x]) and (empty_positions[x-1]):
+        x_positions.append(x)
+        continue
+x_positions.append(width)
 
 m = len(x_positions)
 
@@ -104,7 +119,7 @@ spaceval = [[0 for _ in xrange(0,m)] for _ in xrange(0,m)]
 for i in xrange(0, m):
     caffe_in = np.zeros([m, 1, net_height, net_width], dtype=np.float32)
     indices = []
-    for j in xrange(i+1, m):
+    for j in xrange(i+1, min(m,i+3)):
         if x_positions[j] - x_positions[i] > height:
             continue
         transformed = transform_input(
@@ -129,7 +144,7 @@ for i in xrange(0, m):
     for j in xrange(i+1, m):
         x1 = x_positions[i]
         x2 = x_positions[j]
-        spaceval[i][j] = pow(np.prod(np.mean(binary_array[:,x1:x2], axis=0) / 255.0), 0.5)
+        spaceval[i][j] = pow(np.prod(np.mean(binary_array[:,x1:x2], axis=0) / 255.0), 2)
 
 #0 (
 #1 )
@@ -187,6 +202,11 @@ for i in range(0,m):
             if dp[i][depth][kind] == 0:
                 continue
             for j in range(i+1, m):
+                newval = dp[i][depth][kind] * spaceval[i][j]
+                if dp[j][depth][kind] < newval:
+                    dp[j][depth][kind] = newval
+                    back[j][depth][kind] = (i, depth, kind, -1)
+
                 if len(weights[i][j]) != 23:
                     continue
                 for symbol in range(0,23):
@@ -206,11 +226,6 @@ for i in range(0,m):
                         dp[j][next_depth][symbol] = newval
                         back[j][next_depth][symbol] = (i, depth, kind, symbol)
 
-                newval = dp[i][depth][kind] * spaceval[i][j]
-                if dp[j][next_depth][symbol] < newval:
-                    dp[j][next_depth][symbol] = newval
-                    back[j][next_depth][symbol] = (i, depth, kind, -1)
-
 def follow_dp():
     i = m-1
     depth = 0
@@ -219,12 +234,11 @@ def follow_dp():
     res = []
 
     while i >= 0:
-        print i
         i, depth, kind, symbol = back[i][depth][kind]
         if symbol >= 0:
             res.append(syms[symbol])
 
-    return " ".join(res[::-1])
+    return "".join(res[::-1])
 
 print follow_dp()
 
