@@ -2,7 +2,7 @@
 import numpy as np
 from PIL import Image
 from PIL import ImageOps
-import scipy.misc
+from scipy import ndimage
 import os
 import sys
 
@@ -14,10 +14,20 @@ def get_positions(gap, width):
     return [x*gap for x in range(width/gap)]
 
 def to_binary(gray_image):
+    width,height = gray_image.size
+    gray_image = gray_image.resize((width/2, height/2), Image.BICUBIC)
+    gray_image = ImageOps.autocontrast(gray_image)
     raw_array = np.asarray(gray_image).copy()
-    raw_array_mean = np.mean(raw_array) / 2.0
+
+    raw_array = ndimage.grey_erosion(raw_array, size=(3,3))
+    raw_array = ndimage.grey_dilation(raw_array, size=(2,2))
+
+    raw_array_mean = np.mean(raw_array) / 2
     raw_array[raw_array < raw_array_mean] = 0
     raw_array[raw_array >= raw_array_mean] = 255
+
+    # save binary image for debugging
+    #Image.fromarray(raw_array, 'L').save('binary.png')
     return raw_array
 
 # transforms given 2d grayscale image to height, width
@@ -201,7 +211,7 @@ for i in range(0,m):
         for kind in range(0, sigma):
             if dp[i][depth][kind] == 0:
                 continue
-            for j in range(i+1, m):
+            for j in range(i+1, min(i+5, m)):
                 newval = dp[i][depth][kind] * spaceval[i][j]
                 if dp[j][depth][kind] < newval:
                     dp[j][depth][kind] = newval
