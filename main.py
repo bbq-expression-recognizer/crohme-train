@@ -15,16 +15,28 @@ def get_positions(gap, width):
 
 def to_binary(gray_image):
     width,height = gray_image.size
+    # reduce noise by resizing
     gray_image = gray_image.resize((width/2, height/2), Image.BICUBIC)
+
+    # contrast image
     gray_image = ImageOps.autocontrast(gray_image)
     raw_array = np.asarray(gray_image).copy()
 
+    # erosion and dilation
     raw_array = ndimage.grey_erosion(raw_array, size=(3,3))
     raw_array = ndimage.grey_dilation(raw_array, size=(2,2))
 
-    raw_array_mean = np.mean(raw_array) / 2
-    raw_array[raw_array < raw_array_mean] = 0
-    raw_array[raw_array >= raw_array_mean] = 255
+    # calculate regional mean for each point
+    uniform_array = ndimage.filters.uniform_filter(raw_array.astype(np.int16), size=20)
+
+    # estimate threshold
+    thres = np.min(raw_array - uniform_array) / 5
+
+    # difference to mean of its region
+    mask = (raw_array < (uniform_array + thres))
+
+    raw_array[mask] = 0
+    raw_array[~mask] = 255
 
     # save binary image for debugging
     #Image.fromarray(raw_array, 'L').save('binary.png')
@@ -89,11 +101,6 @@ if not os.path.isfile(MODEL):
     exit(1)
 
 
-# caffe setting
-caffe.set_mode_cpu()
-net = caffe.Classifier(MODEL, TRAINED)
-net_height, net_width = net.image_dims[0], net.image_dims[1]
-
 
 
 #PIL image
@@ -103,6 +110,11 @@ binary_array = to_binary(gray_image)
 height, width = binary_array.shape
 
 gap_ratio = 10
+# caffe setting
+caffe.set_mode_cpu()
+net = caffe.Classifier(MODEL, TRAINED)
+net_height, net_width = net.image_dims[0], net.image_dims[1]
+
 
 
 empty_positions = np.all(binary_array == 255, axis = 0)
@@ -246,7 +258,12 @@ def follow_dp():
     while i >= 0:
         i, depth, kind, symbol = back[i][depth][kind]
         if symbol >= 0:
-            res.append(syms[symbol])
+            if symbol in open_symbol:
+                res.append('(')
+            elif symbol in closing_symbol:
+                res.append(')')
+            else:
+                res.append(syms[symbol])
 
     return "".join(res[::-1])
 
