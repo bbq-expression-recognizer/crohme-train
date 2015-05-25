@@ -27,7 +27,7 @@ def to_binary(gray_image):
     raw_array = ndimage.grey_dilation(raw_array, size=(2,2))
 
     # calculate regional mean for each point
-    uniform_array = ndimage.filters.uniform_filter(raw_array.astype(np.int16), size=20)
+    uniform_array = ndimage.filters.uniform_filter(raw_array.astype(np.int16), size=max(10, width / 50, height / 50))
 
     # estimate threshold
     thres = np.min(raw_array - uniform_array) / 5
@@ -229,9 +229,9 @@ for i in range(0,m):
                     dp[j][depth][kind] = newval
                     back[j][depth][kind] = (i, depth, kind, -1)
 
-                if len(weights[i][j]) != 23:
+                if len(weights[i][j]) != sigma:
                     continue
-                for symbol in range(0,23):
+                for symbol in range(0,sigma):
                     if symbol in open_symbol:
                         next_depth = depth + 1
                     elif symbol in closing_symbol:
