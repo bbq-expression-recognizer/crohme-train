@@ -1,5 +1,6 @@
 #-*- coding: utf-8 -*-
 import numpy as np
+import math
 from PIL import Image
 from PIL import ImageOps
 from scipy import ndimage
@@ -10,37 +11,10 @@ caffe_root = '../caffe/'
 sys.path.insert(0, os.path.join(caffe_root, 'python'))
 import caffe
 
+import binarization
+
 def get_positions(gap, width):
     return [x*gap for x in range(width/gap)]
-
-def to_binary(gray_image):
-    width,height = gray_image.size
-    # reduce noise by resizing
-    gray_image = gray_image.resize((width/2, height/2), Image.BICUBIC)
-
-    # contrast image
-    gray_image = ImageOps.autocontrast(gray_image)
-    raw_array = np.asarray(gray_image).copy()
-
-    # erosion and dilation
-    raw_array = ndimage.grey_erosion(raw_array, size=(3,3))
-    raw_array = ndimage.grey_dilation(raw_array, size=(2,2))
-
-    # calculate regional mean for each point
-    uniform_array = ndimage.filters.uniform_filter(raw_array.astype(np.int16), size=max(10, width / 50, height / 50))
-
-    # estimate threshold
-    thres = np.min(raw_array - uniform_array) / 5
-
-    # difference to mean of its region
-    mask = (raw_array < (uniform_array + thres))
-
-    raw_array[mask] = 0
-    raw_array[~mask] = 255
-
-    # save binary image for debugging
-    #Image.fromarray(raw_array, 'L').save('binary.png')
-    return raw_array
 
 # transforms given 2d grayscale image to height, width
 def transform_input(image, height, width):
@@ -51,14 +25,19 @@ def transform_input(image, height, width):
     # crop white row padding from image
     non_white_row_indices = np.where(np.any(image < 128, axis=1))[0]
     if non_white_row_indices.size == 0:
-        return None
-    image = image[np.min(non_white_row_indices):(np.max(non_white_row_indices)+1), :]
+        return None, None
+    y1 = np.min(non_white_row_indices)
+    y2 = np.max(non_white_row_indices)+1
+    image = image[y1:y2, :]
+
 
     # crop white column padding from image
     non_white_col_indices = np.where(np.any(image < 128, axis=0))[0]
     if non_white_col_indices.size == 0:
-        return None
-    image = image[:, np.min(non_white_col_indices):(np.max(non_white_col_indices)+1)]
+        return None, None
+    x1 = np.min(non_white_col_indices)
+    x2 = np.max(non_white_col_indices)+1
+    image = image[:, x1:x2]
 
     resized = Image.fromarray(image,mode='L')
     resized.thumbnail((img_x-2*margin, img_y-2*margin),Image.ANTIALIAS)
@@ -81,7 +60,7 @@ def transform_input(image, height, width):
 
     result[rowbeg:rowend, colbeg:colend] = resized
     result[result<200] = 0
-    return result/255.0
+    return (y1, y2, x1, x2), result/255.0
 
 # inputs
 MODEL='model.prototxt'
@@ -101,12 +80,26 @@ if not os.path.isfile(MODEL):
     exit(1)
 
 
+# Overall pipeline
+# 1. convert image to binary image.
+# 2. get best rotation angle (which makes minimum height deviation) and rotate.
+# 3. divide images with vertical lines
+# 4. classify each region
+# 5. use Dynamic Programming approach to get the most likely formula.
+# 6. back track dynamic programming table.
 
 
 #PIL image
 gray_image = Image.open(IMAGE).convert('L')
+
 #numpy 2d array (0~255)
-binary_array = to_binary(gray_image)
+binary_array = binarization.to_binary(gray_image)
+
+# rotate to horizontal line
+rotated_angle = binarization.rotated_angle(binary_array)
+binary_array = binarization.rotate_image(binary_array, rotated_angle)
+# Image.fromarray(binary_array, 'L').save('rotate_normalized.png')
+
 height, width = binary_array.shape
 
 gap_ratio = 10
@@ -137,6 +130,9 @@ weights = [[[] for _ in xrange(0,m)] for _ in xrange(0,m)]
 # space[i][j]: [i,j) 위치의 space prediction value. 흰색이면 1이다.
 spaceval = [[0 for _ in xrange(0,m)] for _ in xrange(0,m)]
 
+layouts = [[(0,0) for _ in xrange(0,m)] for _ in xrange(0,m)]
+
+middle_heights = []
 # fill weights
 for i in xrange(0, m):
     caffe_in = np.zeros([m, 1, net_height, net_width], dtype=np.float32)
@@ -144,12 +140,14 @@ for i in xrange(0, m):
     for j in xrange(i+1, min(m,i+3)):
         if x_positions[j] - x_positions[i] > height:
             continue
-        transformed = transform_input(
+        layout, transformed = transform_input(
             binary_array[:,x_positions[i]:x_positions[j]],
             net_height,
             net_width)
         if transformed is None:
             continue
+        layouts[i][j] = layout
+        middle_heights.append((layout[0] + layout[1]-1)/2)
         caffe_in[len(indices)][0] = transformed
         indices.append(j)
         #img = Image.fromarray(transformed*255,mode='F')
@@ -160,6 +158,8 @@ for i in xrange(0, m):
 
     for j, pred in zip(indices,predictions):
         weights[i][j] = pred
+
+middle_height = np.mean(middle_heights)
 
 # fill spaces probability
 for i in xrange(0, m):
