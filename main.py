@@ -13,9 +13,6 @@ import caffe
 
 import binarization
 
-def get_positions(gap, width):
-    return [x*gap for x in range(width/gap)]
-
 # transforms given 2d grayscale image to height, width
 def transform_input(image, height, width):
     img_x = width
@@ -79,6 +76,10 @@ if not os.path.isfile(MODEL):
     print ("file not found: %s" % MODEL)
     exit(1)
 
+# caffe setting
+caffe.set_mode_cpu()
+net = caffe.Classifier(MODEL, TRAINED)
+net_height, net_width = net.image_dims[0], net.image_dims[1]
 
 # Overall pipeline
 # 1. convert image to binary image.
@@ -101,13 +102,6 @@ binary_array = binarization.rotate_image(binary_array, rotated_angle)
 # Image.fromarray(binary_array, 'L').save('rotate_normalized.png')
 
 height, width = binary_array.shape
-
-gap_ratio = 10
-# caffe setting
-caffe.set_mode_cpu()
-net = caffe.Classifier(MODEL, TRAINED)
-net_height, net_width = net.image_dims[0], net.image_dims[1]
-
 
 
 empty_positions = np.all(binary_array == 255, axis = 0)
