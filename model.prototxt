@@ -132,6 +132,18 @@ layer {
   type: "ReLU"
   bottom: "ip1"
   top: "ip1"
+  relu_param {
+    negative_slope: 0.01
+  }
+}
+layer {
+  name: "drop1"
+  type: "Dropout"
+  bottom: "ip1"
+  top: "ip1"
+  dropout_param {
+    dropout_ratio: 0.7
+  }
 }
 layer {
   name: "ip2"
@@ -145,7 +157,7 @@ layer {
     lr_mult: 2
   }
   inner_product_param {
-    num_output: 23
+    num_output: 24
     weight_filler {
       type: "xavier"
     }

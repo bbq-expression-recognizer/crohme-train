@@ -191,22 +191,31 @@ for i in xrange(0, m):
 #20 \{
 #21 \}
 #22 ]
+#23 e
 
 
-syms=[ "(", ")", "+", "-", "/", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "=", "[", "\\div", "\\pi", "\\times", "\\{", "\\}", "]"]
-sym2kind=[ 2, 2, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 1, 0, 1, 2, 2, 2 ]
+syms=[ "(", ")", "+", "-", "/", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "=", "[", "\\div", "\\pi", "\\times", "\\{", "\\}", "]", "e"]
+sym2kind=[ 2, 2, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 1, 0, 1, 2, 2, 2, 0]
 
 
 sigma = len(syms)
 
 open_symbol={0,16,20}
 closing_symbol={1,22,21}
-digits_symbol={5,6,7,8,9,10,11,12,13,14,18}
+digits_symbol={5,6,7,8,9,10,11,12,13,14,18,23}
 operator_symbol={2,3,4,15,17,19}
 
 # check if syms[s1] to syms[s2] is possible
 def possible_transition(s1,s2):
+    if (syms[s1] == "\\pi") and (s2 >= 5 and s2 <= 14):
+        return False
+    if (syms[s1] == "e") and (s2 >= 5 and s2 <= 14):
+        return False
     if (s1 in operator_symbol) and (s2 in operator_symbol):
+        return False
+    if (s1 in operator_symbol) and (s2 in closing_symbol):
+        return False
+    if (s1 in open_symbol) and (s2 in operator_symbol) and (syms[s2] != "-"):
         return False
     return True
 
