@@ -103,39 +103,71 @@ binary_array = binarization.rotate_image(binary_array, rotated_angle)
 
 height, width = binary_array.shape
 
+# labeling with flood-fill (8-direction)
+labeled_array, num_features = ndimage.measurements.label(np.invert(binary_array),
+        structure = ndimage.morphology.generate_binary_structure(2, 2))
+features = []
+for i in xrange(1, num_features + 1):
+    x_coords = (labeled_array == i).nonzero()[1]
+    xmin = min(x_coords)
+    xmax = max(x_coords)
+    # (start x coordinate, end x coordinate, feature number)
+    features.append([min(x_coords), max(x_coords), i])
+# sort by starting coordinate
+features.sort()
 
-empty_positions = np.all(binary_array == 255, axis = 0)
+if len(features) == 0:
+    print 'no symbols detected'
+    exit(1)
 
-x_positions = [0]
-for x in xrange(1, width):
-    if (empty_positions[x]) and (not empty_positions[x-1]):
-        x_positions.append(x)
-        continue
-    if (not empty_positions[x]) and (empty_positions[x-1]):
-        x_positions.append(x)
-        continue
-x_positions.append(width)
+# virtual symbol at start (for easy dp)
+merged_features = [[-1, -1, 0]]
+for i in xrange(num_features):
+    # no overlapping
+    if merged_features[-1][1] < features[i][0]:
+        merged_features.append(features[i])
+    # overlap
+    else:
+        overlap = float(min(merged_features[-1][1], features[i][1]) - features[i][0])
+        ratio0 = overlap / (merged_features[-1][1] - merged_features[-1][0])
+        ratio1 = overlap / (features[i][1] - features[i][0])
+        # > 50% overlap from both features' perspective
+        if ratio0 > 0.5 or ratio1 > 0.5:
+            # merge coords
+            merged_features[-1][1] = features[i][1]
+            # change label
+            labeled_array[labeled_array == features[i][2]] = merged_features[-1][2]
+        else:
+            merged_features.append(features[i])
 
-m = len(x_positions)
+# swap to merged one
+features = merged_features
+m = len(features)
+#print features
 
-# weight[i][j][d]: [i, j) 위치의 d번 symbol의 prediction value.
-weights = [[[] for _ in xrange(0,m)] for _ in xrange(0,m)]
+# weight[i][j][d]: [i, j] 위치의 d번 symbol의 prediction value.
+weights = [[[] for _ in xrange(0, m)] for _ in xrange(0, m)]
 
-# space[i][j]: [i,j) 위치의 space prediction value. 흰색이면 1이다.
-spaceval = [[0 for _ in xrange(0,m)] for _ in xrange(0,m)]
+# space[i][j]: [i,j] 위치의 space prediction value. 흰색이면 1이다.
+spaceval = [[0 for _ in xrange(0, m)] for _ in xrange(0, m)]
 
 layouts = [[(0,0) for _ in xrange(0,m)] for _ in xrange(0,m)]
 
 middle_heights = []
 # fill weights
-for i in xrange(0, m):
+for i in xrange(1, m):
     caffe_in = np.zeros([m, 1, net_height, net_width], dtype=np.float32)
     indices = []
-    for j in xrange(i+1, min(m,i+3)):
-        if x_positions[j] - x_positions[i] > height:
+    # we need image buffer, since we cannot directly cut image due to overlap
+    imgbuf = np.full([height, width], 255, dtype = np.uint8)
+    for j in xrange(i, min(i + 3, m)):
+        # too long, doesn't seem to be symbol
+        if features[j][1] - features[i][0] > height:
             continue
+        # fill current feature
+        imgbuf[labeled_array == features[j][2]] = 0
         layout, transformed = transform_input(
-            binary_array[:,x_positions[i]:x_positions[j]],
+            imgbuf[:, features[i][0] : features[j][1] + 1],
             net_height,
             net_width)
         if transformed is None:
@@ -156,11 +188,11 @@ for i in xrange(0, m):
 middle_height = np.mean(middle_heights)
 
 # fill spaces probability
-for i in xrange(0, m):
-    for j in xrange(i+1, m):
-        x1 = x_positions[i]
-        x2 = x_positions[j]
-        spaceval[i][j] = pow(np.prod(np.mean(binary_array[:,x1:x2], axis=0) / 255.0), 2)
+for i in xrange(1, m):
+    imgbuf = np.full([height, width], 255, dtype = np.uint8)
+    for j in xrange(i, m):
+        imgbuf[labeled_array == features[j][2]] = 0
+        spaceval[i][j] = pow(np.prod(np.mean(imgbuf[:, features[i][0] : features[j][1] + 1], axis=0) / 255.0), 2)
 
 #0 (
 #1 )
@@ -226,13 +258,13 @@ for i in range(0,m):
         for kind in range(0, sigma):
             if dp[i][depth][kind] == 0:
                 continue
-            for j in range(i+1, min(i+5, m)):
-                newval = dp[i][depth][kind] * spaceval[i][j]
+            for j in range(i+1, min(i+2, m)):
+                newval = dp[i][depth][kind] * spaceval[i + 1][j]
                 if dp[j][depth][kind] < newval:
                     dp[j][depth][kind] = newval
                     back[j][depth][kind] = (i, depth, kind, -1)
 
-                if len(weights[i][j]) != sigma:
+                if len(weights[i + 1][j]) != sigma:
                     continue
                 for symbol in range(0,sigma):
                     if symbol in open_symbol:
@@ -246,7 +278,7 @@ for i in range(0,m):
 
                     if not possible_transition(kind, symbol):
                         continue
-                    newval = dp[i][depth][kind] * weights[i][j][symbol]
+                    newval = dp[i][depth][kind] * weights[i+1][j][symbol]
                     if dp[j][next_depth][symbol] < newval:
                         dp[j][next_depth][symbol] = newval
                         back[j][next_depth][symbol] = (i, depth, kind, symbol)
@@ -271,5 +303,3 @@ def follow_dp():
     return "".join(res[::-1])
 
 print follow_dp()
-
-
