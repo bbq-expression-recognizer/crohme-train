@@ -134,7 +134,7 @@ for i in xrange(num_features):
         # > 50% overlap from both features' perspective
         if ratio0 > 0.5 or ratio1 > 0.5:
             # merge coords
-            merged_features[-1][1] = features[i][1]
+            merged_features[-1][1] = max(merged_features[-1][1], features[i][1])
             # change label
             labeled_array[labeled_array == features[i][2]] = merged_features[-1][2]
         else:
@@ -160,7 +160,7 @@ for i in xrange(1, m):
     indices = []
     # we need image buffer, since we cannot directly cut image due to overlap
     imgbuf = np.full([height, width], 255, dtype = np.uint8)
-    for j in xrange(i, min(i + 3, m)):
+    for j in xrange(i, min(i + 1, m)):
         # too long, doesn't seem to be symbol
         if features[j][1] - features[i][0] > height:
             continue
@@ -187,12 +187,17 @@ for i in xrange(1, m):
 
 middle_height = np.mean(middle_heights)
 
+# calculate bottom line and top line
+black_cells = np.where(binary_array == 0)[0]
+top = int(np.percentile(black_cells, 1))
+bottom = int(np.percentile(black_cells, 99))
+
 # fill spaces probability
 for i in xrange(1, m):
     imgbuf = np.full([height, width], 255, dtype = np.uint8)
     for j in xrange(i, m):
         imgbuf[labeled_array == features[j][2]] = 0
-        spaceval[i][j] = pow(np.prod(np.mean(imgbuf[:, features[i][0] : features[j][1] + 1], axis=0) / 255.0), 2)
+        spaceval[i][j] = pow(np.prod(np.mean(imgbuf[top:bottom+1, features[i][0] : features[j][1] + 1], axis=0) / 255.0), 2)
 
 #0 (
 #1 )
@@ -258,7 +263,7 @@ for i in range(0,m):
         for kind in range(0, sigma):
             if dp[i][depth][kind] == 0:
                 continue
-            for j in range(i+1, min(i+2, m)):
+            for j in range(i+1, min(i+3, m)):
                 newval = dp[i][depth][kind] * spaceval[i + 1][j]
                 if dp[j][depth][kind] < newval:
                     dp[j][depth][kind] = newval

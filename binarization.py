@@ -27,7 +27,7 @@ def to_binary(gray_image):
         size=max(10, width / 50, height / 50))
 
     # estimate threshold
-    thres = np.min(raw_array - uniform_array) / 5
+    thres = np.min(raw_array - uniform_array) / 6
 
     # difference to mean of its region
     mask = (raw_array < (uniform_array + thres))
