@@ -288,16 +288,51 @@ def parse_expression(IMAGE, net):
 
         return " ".join(res[::-1])
 
-    return follow_dp()
+    return follow_dp(), Image.fromarray(binary_array, 'L')
 
 # inputs
 MODEL='model.prototxt'
 TRAINED='trained.caffemodel'
 
+if len(sys.argv) == 1:
+    print ("For single image usage: python main.py (image-file-name)")
+    print "running in service mode..."
+
+    # caffe setting
+    caffe.set_mode_cpu()
+    net = caffe.Classifier(MODEL, TRAINED)
+
+    import redis
+
+    # setup redis
+    redis_server = redis.StrictRedis(host='localhost', port=6379, db=2, decode_responses = True)
+    pubsub = redis_server.pubsub()
+
+    pubsub.subscribe(u"request")
+
+    # wait for message
+    for msg in pubsub.listen():
+        print "received", msg
+        if msg['data'] != u"image":
+            print "unknown message"
+            continue
+
+        image_id, image_path = redis_server.lpop(u"image").decode('utf-8').split(u',', 1)
+
+        # call function
+        result, normalized_image = parse_expression(image_path, net)
+
+        normalized_image.save(image_path + u"_normalized.png")
+        redis_server.rpush(u"result" + unicode(image_id), unicode(result))
+
+    pubusb.unsubscribe(u"request")
+    exit(0)
+
+
+
 if len(sys.argv) != 2:
     print ("Usage: python main.py (image-file-name)")
     exit(1)
-
 IMAGE=sys.argv[1]
 
 if not os.path.isfile(TRAINED):
@@ -311,4 +346,5 @@ if not os.path.isfile(MODEL):
 caffe.set_mode_cpu()
 net = caffe.Classifier(MODEL, TRAINED)
 
-print parse_expression(IMAGE, net)
+expr, _ =  parse_expression(IMAGE, net)
+print expr
