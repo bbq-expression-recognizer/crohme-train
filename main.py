@@ -134,6 +134,14 @@ def parse_expression(IMAGE, net):
 
     layouts = [[(0,0) for _ in xrange(0,m)] for _ in xrange(0,m)]
 
+    # calculate bottom line and top line
+    black_cells = np.where(binary_array == 0)[0]
+    top = int(np.percentile(black_cells, 1))
+    bottom = int(np.percentile(black_cells, 99))
+
+    # number of symbols in neural net
+    trained_symbol_size = 24
+
     middle_heights = []
     # fill weights
     for i in xrange(1, m):
@@ -142,9 +150,6 @@ def parse_expression(IMAGE, net):
         # we need image buffer, since we cannot directly cut image due to overlap
         imgbuf = np.full([height, width], 255, dtype = np.uint8)
         for j in xrange(i, min(i + 1, m)):
-            # too long, doesn't seem to be symbol
-            if features[j][1] - features[i][0] > height:
-                continue
             # fill current feature
             imgbuf[labeled_array == features[j][2]] = 0
             layout, transformed = transform_input(
@@ -154,6 +159,12 @@ def parse_expression(IMAGE, net):
             if transformed is None:
                 continue
             layouts[i][j] = layout
+            if max(layout[1] - layout[0], layout[3] - layout[2]) < (bottom-top) / 6:
+                if (layout[0] + layout[1]) >= (bottom * 3 + top) / 2:
+                    weights[i][j] = [0] * trained_symbol_size + [0, 1]
+                else:
+                    weights[i][j] = [0] * trained_symbol_size + [1, 0]
+                continue
             middle_heights.append((layout[0] + layout[1]-1)/2)
             caffe_in[len(indices)][0] = transformed
             indices.append(j)
@@ -164,16 +175,11 @@ def parse_expression(IMAGE, net):
         predictions = out[net.outputs[0]]
 
         for j, pred in zip(indices,predictions):
-            weights[i][j] = pred
+            weights[i][j] = list(pred) + [0, 0] # dot probability
 
-    if len(middle_height) == 0:
+    if len(middle_heights) == 0:
         raise Exception('no symbols found')
     middle_height = np.mean(middle_heights)
-
-    # calculate bottom line and top line
-    black_cells = np.where(binary_array == 0)[0]
-    top = int(np.percentile(black_cells, 1))
-    bottom = int(np.percentile(black_cells, 99))
 
     # fill spaces probability
     for i in xrange(1, m):
@@ -206,18 +212,20 @@ def parse_expression(IMAGE, net):
     #21 \}
     #22 ]
     #23 e
+    #24 \cdot
+    #25 .
 
 
-    syms=[ "(", ")", "+", "-", "/", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "=", "[", "\\div", "\\pi", "\\times", "\\{", "\\}", "]", "e"]
-    sym2kind=[ 2, 2, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 1, 0, 1, 2, 2, 2, 0]
+    syms=[ "(", ")", "+", "-", "/", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "=", "[", "\\div", "\\pi", "\\times", "\\{", "\\}", "]", "e", "\\cdot", "."]
+    sym2kind=[ 2, 2, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 1, 0, 1, 2, 2, 2, 0, 1, 0]
 
 
     sigma = len(syms)
 
     open_symbol={0,16,20}
     closing_symbol={1,22,21}
-    digits_symbol={5,6,7,8,9,10,11,12,13,14,18,23}
-    operator_symbol={2,3,4,15,17,19}
+    digits_symbol={5,6,7,8,9,10,11,12,13,14,18,23,25}
+    operator_symbol={2,3,4,15,17,19,24}
 
     # check if syms[s1] to syms[s2] is possible
     def possible_transition(s1,s2):
@@ -225,7 +233,7 @@ def parse_expression(IMAGE, net):
             return False
         if (syms[s1] == "e") and (s2 >= 5 and s2 <= 14):
             return False
-        if (s1 in operator_symbol) and (s2 in operator_symbol):
+        if (s1 in operator_symbol) and (s2 in operator_symbol) and (syms[s2] != "-"):
             return False
         if (s1 in operator_symbol) and (s2 in closing_symbol):
             return False
@@ -288,7 +296,9 @@ def parse_expression(IMAGE, net):
                 else:
                     res.append(syms[symbol])
 
-        return " ".join(res[::-1])
+        space_separated = " ".join(res[::-1])
+        return space_separated.replace(". ", ".")
+
 
     return follow_dp(), Image.fromarray(binary_array, 'L')
 
