@@ -21,7 +21,7 @@ def to_binary(gray_image):
     # sum up nearby pixels.
     near_uniform_array = ndimage.filters.uniform_filter(
         raw_array.astype(np.int16),
-        size=max(2, width / 250, height / 250))
+        size=max(2, width / 300, height / 300))
 
     # calculate regional mean for each point
     uniform_array = ndimage.filters.uniform_filter(
