@@ -166,6 +166,8 @@ def parse_expression(IMAGE, net):
         for j, pred in zip(indices,predictions):
             weights[i][j] = pred
 
+    if len(middle_height) == 0:
+        raise Exception('no symbols found')
     middle_height = np.mean(middle_heights)
 
     # calculate bottom line and top line
@@ -313,17 +315,23 @@ if len(sys.argv) == 1:
     # wait for message
     for msg in pubsub.listen():
         print "received", msg
-        if msg['type'] != 'message' or msg['data'] != u"image":
+        if msg['type'] != 'message':
+            continue
+        if msg['data'] != u"image":
             print "unknown message"
             continue
 
         image_id, image_path = redis_server.lpop(u"image").decode('utf-8').split(u',', 1)
 
         # call function
-        result, normalized_image = parse_expression(image_path, net)
+        try:
+            result, normalized_image = parse_expression(image_path, net)
 
-        normalized_image.save(image_path + u"_normalized.png")
-        redis_server.rpush(u"result" + unicode(image_id), unicode(result))
+            normalized_image.save(image_path + u"_normalized.png")
+            redis_server.rpush(u"result" + unicode(image_id), unicode(result))
+        except:
+            print "failed processing image"
+            redis_server.rpush(u"result" + unicode(image_id), u"")
 
     pubusb.unsubscribe(u"request")
     exit(0)
