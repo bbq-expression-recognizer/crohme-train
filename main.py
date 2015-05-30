@@ -109,9 +109,9 @@ def parse_expression(IMAGE, net):
             merged_features.append(features[i])
         # overlap
         else:
-            overlap = float(min(merged_features[-1][1], features[i][1]) - features[i][0])
-            ratio0 = overlap / (merged_features[-1][1] - merged_features[-1][0])
-            ratio1 = overlap / (features[i][1] - features[i][0])
+            overlap = float(min(merged_features[-1][1], features[i][1]) + 1 - features[i][0])
+            ratio0 = overlap / (merged_features[-1][1] - merged_features[-1][0] + 1)
+            ratio1 = overlap / (features[i][1] - features[i][0] + 1)
             # > 50% overlap from both features' perspective
             if ratio0 > 0.5 or ratio1 > 0.5:
                 # merge coords
@@ -313,7 +313,7 @@ if len(sys.argv) == 1:
     # wait for message
     for msg in pubsub.listen():
         print "received", msg
-        if msg['data'] != u"image":
+        if msg['type'] != 'message' or msg['data'] != u"image":
             print "unknown message"
             continue
 
