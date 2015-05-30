@@ -10,16 +10,18 @@ def to_binary(gray_image):
     returns numpy uint8 2d array
     """
     width,height = gray_image.size
-    # reduce noise by resizing
-    gray_image = gray_image.resize((width/2, height/2), Image.BICUBIC)
+    raw_array = np.asarray(gray_image).copy()
+
+    gray_image = Image.fromarray(raw_array, 'L')
 
     # contrast image
     gray_image = ImageOps.autocontrast(gray_image)
     raw_array = np.asarray(gray_image).copy()
 
-    # erosion and dilation reduce noise
-    raw_array = ndimage.grey_erosion(raw_array, size=(3,3))
-    raw_array = ndimage.grey_dilation(raw_array, size=(2,2))
+    # sum up nearby pixels.
+    near_uniform_array = ndimage.filters.uniform_filter(
+        raw_array.astype(np.int16),
+        size=max(2, width / 250, height / 250))
 
     # calculate regional mean for each point
     uniform_array = ndimage.filters.uniform_filter(
@@ -27,10 +29,10 @@ def to_binary(gray_image):
         size=max(10, width / 50, height / 50))
 
     # estimate threshold
-    thres = np.min(raw_array - uniform_array) / 6
+    thres = np.min(near_uniform_array - uniform_array) / 6
 
     # difference to mean of its region
-    mask = (raw_array < (uniform_array + thres))
+    mask = (near_uniform_array < (uniform_array + thres))
 
     raw_array[mask] = 0
     raw_array[~mask] = 255
