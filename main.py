@@ -136,8 +136,8 @@ def parse_expression(IMAGE, net):
 
     # calculate bottom line and top line
     black_cells = np.where(binary_array == 0)[0]
-    top = int(np.percentile(black_cells, 1))
-    bottom = int(np.percentile(black_cells, 99))
+    top = int(np.percentile(black_cells, 5))
+    bottom = int(np.percentile(black_cells, 95))
 
     # number of symbols in neural net
     trained_symbol_size = 24
@@ -153,7 +153,7 @@ def parse_expression(IMAGE, net):
             # fill current feature
             imgbuf[labeled_array == features[j][2]] = 0
             layout, transformed = transform_input(
-                imgbuf[:, features[i][0] : features[j][1] + 1],
+                imgbuf[max(top - (bottom-top), 0):min(bottom + (bottom-top), len(imgbuf)), features[i][0] : features[j][1] + 1],
                 net_height,
                 net_width)
             if transformed is None:

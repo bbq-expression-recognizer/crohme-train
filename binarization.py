@@ -21,12 +21,12 @@ def to_binary(gray_image):
     # sum up nearby pixels.
     near_uniform_array = ndimage.filters.uniform_filter(
         raw_array.astype(np.int16),
-        size=max(2, width / 300, height / 300))
+        size=max(2, width / 350, height / 350))
 
     # calculate regional mean for each point
     uniform_array = ndimage.filters.uniform_filter(
         raw_array.astype(np.int16),
-        size=max(10, width / 50, height / 50))
+        size=max(10, width / 30, height / 30))
 
     # estimate threshold
     thres = np.min(near_uniform_array - uniform_array) / 6
