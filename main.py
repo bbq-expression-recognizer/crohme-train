@@ -159,7 +159,7 @@ def parse_expression(IMAGE, net):
             if transformed is None:
                 continue
             layouts[i][j] = layout
-            if max(layout[1] - layout[0], layout[3] - layout[2]) < (bottom-top) / 6:
+            if max(layout[1] - layout[0], layout[3] - layout[2]) < (bottom-top) / 4:
                 if (layout[0] + layout[1]) >= (bottom * 3 + top) / 2:
                     weights[i][j] = [0] * trained_symbol_size + [0, 1]
                 else:
