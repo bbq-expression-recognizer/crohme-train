@@ -64,7 +64,7 @@ def parse_expression(net):
         samples = np.sum(confusion[actual])
         for predicted in xrange(0,24):
             print " {:7.2%} ".format(confusion[actual][predicted] / float(samples)),
-        print ""
+        print (" #%d" % samples)
 
     return confusion
 
